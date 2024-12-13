@@ -83,38 +83,40 @@ int main(int argc, char* argv[])
 		}
 		else if (operation == "encode")
 		{
-			fs::path dl_file_path;
-			if (argc >= 4)
-			{
-				dl_file_path = argv[3];
-			}
+			print("Unsupported");
+			return 1;
+			// fs::path dl_file_path;
+			// if (argc >= 4)
+			// {
+			// 	dl_file_path = argv[3];
+			// }
 
-			if (!fs::is_directory(input_path))
-			{
-				print("Input path is not a directory! Failed to load file content");
-				return 1;
-			}
+			// if (!fs::is_directory(input_path))
+			// {
+			// 	print("Input path is not a directory! Failed to load file content");
+			// 	return 1;
+			// }
 
-			SWFFile file;
-			file.use_external_texture_files = use_external_files;
-			bool is_dl_file = !dl_file_path.empty() && fs::exists(dl_file_path);
-			if (is_dl_file)
-			{
-				file.load(dl_file_path);
-			}
+			// SWFFile file;
+			// file.use_external_texture_files = use_external_files;
+			// bool is_dl_file = !dl_file_path.empty() && fs::exists(dl_file_path);
+			// if (is_dl_file)
+			// {
+			// 	file.load(dl_file_path);
+			// }
 
-			file.load_textures_from_folder(input_path);
-			fs::path output_path = fs::path(input_path.parent_path() / fs::path(basename.concat(".sc")));
-			if (is_dl_file)
-			{
-				file.save(output_path, Signature::Zstandard);
-			}
-			else
-			{
-				file.save_internal(true, false);
-				file.stream.save_file(output_path, Signature::Zstandard);
-				file.stream.clear();
-			}
+			// file.load_textures_from_folder(input_path);
+			// fs::path output_path = fs::path(input_path.parent_path() / fs::path(basename.concat(".sc")));
+			// if (is_dl_file)
+			// {
+			// 	file.save(output_path, Signature::Zstandard);
+			// }
+			// else
+			// {
+			// 	file.save_internal(true, false);
+			// 	file.stream.save_file(output_path, Signature::Zstandard);
+			// 	file.stream.clear();
+			// }
 		}
 
 		cout << "Operation took: " << operation_timer.elapsed() / 60000 << " seconds";

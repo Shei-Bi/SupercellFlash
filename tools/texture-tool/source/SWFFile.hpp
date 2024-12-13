@@ -342,44 +342,121 @@ namespace sc
 					}
 				}
 			}
-
-			void save_sprites_to_folder(std::filesystem::path output_path)
-			{
-				SpriteData data;
-				std::vector<ShapeDrawBitmapCommand> commands;
-
-				for (SWFTexture& texture : textures)
-				{
-					data.textures.emplace_back(texture.image()->width(), texture.image()->height());
-				}
-
-				for (Shape& shape : shapes)
-				{
-					for (ShapeDrawBitmapCommand& command : shape.commands)
-					{
-						auto commnand_it = std::find_if(commands.begin(), commands.end(), [&command](const ShapeDrawBitmapCommand& current) {return CommandEqual(command, current); });
-						if (commands.size() == 0 || commnand_it == commands.end())
-						{
-							auto& sprite = data.sprites.emplace_back();
-							sprite.name = std::string("sprite_") + std::to_string(commands.size());
-							sprite.texture_index = command.texture_index;
-							auto image = textures[command.texture_index].image();
-							for (auto& vertex : command.vertices)
-							{
-								sprite.vertices.emplace_back((uint16_t)(vertex.u * image->width()), (uint16_t)(vertex.v * image->height()));
-							}
-
-							commands.push_back(command);
+			static void pasteTex(uint8_t* thisData, uint8_t* otherData, int otherWidth, int otherHeight, int x, int y, int width, int height) {
+				for (int i = 0;i < height;i++) {
+					for (int j = 0;j < width;j++) {
+						for (int k = 0;k < 4;k++) {
+							thisData[(i * width + j) * 4 + k] = otherData[((i + y) * otherWidth + (j + x)) * 4 + k];
+							// std::cout << ((i * height + j) * 4 + k) << std::endl;
 						}
 					}
 				}
+			}
+			void save_sprites_to_folder(std::filesystem::path output_path)
+			{
+				wk::RawImage** images = new wk::RawImage * [textures.size()];
+				uint8_t** buckets = new uint8_t * [textures.size()];
+				for (uint16_t i = 0; textures.size() > i; i++)
+				{
+					SWFTexture& texture = textures[i];
 
+					// Texture Image
+					// std::filesystem::path basename = output_path.stem();
+					// std::filesystem::path output_image_path = output_path / basename.concat("_").concat(std::to_string(i)).concat(".png");
+					// wk::OutputFileStream output_image(output_image_path);
+
+					// wk::stb::ImageFormat format = wk::stb::ImageFormat::PNG;
+
+					switch (texture.encoding())
+					{
+					case SWFTexture::TextureEncoding::KhronosTexture:
+					{
+						wk::RawImage image(
+							texture.image()->width(), texture.image()->height(),
+							texture.image()->depth()
+						);
+
+						wk::SharedMemoryStream image_data(image.data(), image.data_length());
+						((sc::texture::KhronosTexture*)(texture.image()))->decompress_data(image_data);
+
+						PremultiplyToStraight(image);
+						// wk::stb::write_image(image, format, output_image);
+						images[i] = &image;
+						buckets[i] = wk::Memory::allocate(wk::Image::calculate_image_length(images[i]->width(), images[i]->height(), wk::Image::PixelDepth::RGBA8));
+
+						wk::Image::remap(
+							images[i]->data(), buckets[i],
+							images[i]->width(), images[i]->height(),
+							images[i]->depth(), wk::Image::PixelDepth::RGBA8
+						);
+					}
+					break;
+
+					case SWFTexture::TextureEncoding::Raw:
+					{
+						texture.linear(true);
+
+						wk::RawImage& image = *(wk::RawImage*)(texture.image());
+						PremultiplyToStraight(image);
+						// wk::stb::write_image(
+						// 	image,
+						// 	format,
+						// 	output_image
+						// );
+						images[i] = &image;
+					}
+					break;
+
+					default:
+						break;
+					}
+					// std::cout << "Decoded texture: " << output_image_path << std::endl;
+				}
+				// for (int i = 0;i < textures.size();i++) {
+				// 	buckets[i] = wk::Memory::allocate(wk::Image::calculate_image_length(images[i]->width(), images[i]->height(), wk::Image::PixelDepth::RGBA8));
+
+				// 	wk::Image::remap(
+				// 		images[i]->data(), buckets[i],
+				// 		images[i]->width(), images[i]->height(),
+				// 		images[i]->depth(), wk::Image::PixelDepth::RGBA8
+				// 	);
+				// }
 				std::filesystem::path basename = output_path.stem();
-				std::filesystem::path data_file = output_path / fs::path(basename).concat(".sctex");
-
-				data.Save(data_file);
-
-				return;
+				for (ExportName& exportName : exports) {
+					DisplayObject* displayObject = &GetDisplayObjectByID(exportName.id);
+					if (!displayObject->is_movieclip()) continue;
+					MovieClip* movieClip = (MovieClip*)displayObject;
+					if (movieClip->frames.size() != 1) continue;
+					std::cout << exportName.name.string() << std::endl;
+					for (DisplayObjectInstance& displayObjectInstance : movieClip->childrens) {
+						DisplayObject* displayObject = &GetDisplayObjectByID(displayObjectInstance.id);
+						if (!displayObject->is_shape()) continue;
+						Shape* shape = (Shape*)displayObject;
+						assert(shape->commands.size() == 1);
+						wk::RectF bounds(0.0f, 0.0f, 0.0f, 0.0f);
+						wk::RectF boundsTex(1.0f, 1.0f, 0.0f, 0.0f);
+						for (ShapeDrawBitmapCommandVertex& vertex : shape->commands[0].vertices) {
+							if (bounds.left > vertex.x) bounds.left = vertex.x;
+							if (bounds.right < vertex.x) bounds.right = vertex.x;
+							if (bounds.top > vertex.y) bounds.top = vertex.y;
+							if (bounds.bottom < vertex.y) bounds.bottom = vertex.y;
+							if (boundsTex.left > vertex.u) boundsTex.left = vertex.u;
+							if (boundsTex.right < vertex.u) boundsTex.right = vertex.u;
+							if (boundsTex.top > vertex.v) boundsTex.top = vertex.v;
+							if (boundsTex.bottom < vertex.v) boundsTex.bottom = vertex.v;
+						}
+						int outWidth = bounds.right - bounds.left;
+						int outHeight = bounds.bottom - bounds.top;
+						int outLength = wk::Image::calculate_image_length(outWidth, outHeight, wk::Image::PixelDepth::RGBA8);
+						auto buffer = wk::Memory::allocate(outLength);
+						auto image = images[shape->commands[0].texture_index];
+						pasteTex(buffer, buckets[shape->commands[0].texture_index], image->width(), image->height(), boundsTex.left * image->width(), boundsTex.top * image->height(), outWidth, outHeight);
+						wk::RawImage out(buffer, outWidth, outHeight, wk::Image::PixelDepth::RGBA8, wk::Image::ColorSpace::Linear);
+						wk::OutputFileStream output_image((basename / exportName.name.string()).concat(".png"));
+						wk::stb::write_image(out, wk::stb::ImageFormat::PNG, output_image);
+						// return;
+					}
+				}
 			}
 
 			void save_textures_to_folder(std::filesystem::path output_path)
@@ -508,118 +585,118 @@ namespace sc
 				file_info.write(serialized_data.data(), serialized_data.size());
 			}
 
-			void load_textures_from_folder(std::filesystem::path input)
-			{
-				current_file = input;
-				std::filesystem::path basename = input.stem();
-				std::filesystem::path texture_info_path = std::filesystem::path(input / basename.concat(".json"));
+			// void load_textures_from_folder(std::filesystem::path input)
+			// {
+			// 	current_file = input;
+			// 	std::filesystem::path basename = input.stem();
+			// 	std::filesystem::path texture_info_path = std::filesystem::path(input / basename.concat(".json"));
 
-				// Texture Info Parsing
-				json texture_infos = json::array({});
+			// 	// Texture Info Parsing
+			// 	json texture_infos = json::array({});
 
-				if (!std::filesystem::exists(texture_info_path))
-				{
-					std::cout << "Texture info file does not exist. Default settings will be used instead" << std::endl;
-				}
-				else
-				{
-					std::ifstream file(texture_info_path);
-					texture_infos = json::parse(file);
-				}
+			// 	if (!std::filesystem::exists(texture_info_path))
+			// 	{
+			// 		std::cout << "Texture info file does not exist. Default settings will be used instead" << std::endl;
+			// 	}
+			// 	else
+			// 	{
+			// 		std::ifstream file(texture_info_path);
+			// 		texture_infos = json::parse(file);
+			// 	}
 
-				// Texture Images path gather
-				SWFVector<std::filesystem::path> texture_images_paths;
+			// 	// Texture Images path gather
+			// 	SWFVector<std::filesystem::path> texture_images_paths;
 
-				for (auto const& file_descriptor : std::filesystem::directory_iterator(input))
-				{
-					std::filesystem::path filepath = file_descriptor.path();
-					std::filesystem::path file_extension = filepath.extension();
+			// 	for (auto const& file_descriptor : std::filesystem::directory_iterator(input))
+			// 	{
+			// 		std::filesystem::path filepath = file_descriptor.path();
+			// 		std::filesystem::path file_extension = filepath.extension();
 
-					if (file_extension == ".png")
-					{
-						texture_images_paths.push_back(filepath);
-					}
-				}
+			// 		if (file_extension == ".png")
+			// 		{
+			// 			texture_images_paths.push_back(filepath);
+			// 		}
+			// 	}
 
-				//Texture Converting
-				for (uint16_t i = 0; texture_images_paths.size() > i; i++)
-				{
-					// Image Loading
-					wk::Ref<wk::RawImage> image;
-					wk::InputFileStream image_file(texture_images_paths[i]);
-					wk::stb::load_image(image_file, image);
-					StraightToPremultiply(*image);
+			// 	//Texture Converting
+			// 	for (uint16_t i = 0; texture_images_paths.size() > i; i++)
+			// 	{
+			// 		// Image Loading
+			// 		wk::Ref<wk::RawImage> image;
+			// 		wk::InputFileStream image_file(texture_images_paths[i]);
+			// 		wk::stb::load_image(image_file, image.);
+			// 		StraightToPremultiply(*image);
 
-					wk::SharedMemoryStream image_data(image->data(), image->data_length());
+			// 		wk::SharedMemoryStream image_data(image->data(), image->data_length());
 
-					// Image Converting
-					SWFTexture texture;
-					texture.load_from_image(*image);
+			// 		// Image Converting
+			// 		SWFTexture texture;
+			// 		texture.load_from_image(*image);
 
-					if (texture_infos.size() > i)
-					{
-						json texture_info = texture_infos[i];
+			// 		if (texture_infos.size() > i)
+			// 		{
+			// 			json texture_info = texture_infos[i];
 
-						SWFTexture::PixelFormat texture_type = SWFTexture::PixelFormat::RGBA8;
+			// 			SWFTexture::PixelFormat texture_type = SWFTexture::PixelFormat::RGBA8;
 
-						if (texture_info["PixelFormat"] == "RGBA4")
-						{
-							texture_type = SWFTexture::PixelFormat::RGBA4;
-						}
-						else if (texture_info["PixelFormat"] == "RGB5_A1")
-						{
-							texture_type = SWFTexture::PixelFormat::RGB5_A1;
-						}
-						else if (texture_info["PixelFormat"] == "RGB565")
-						{
-							texture_type = SWFTexture::PixelFormat::RGB565;
-						}
-						else if (texture_info["PixelFormat"] == "LUMINANCE8_ALPHA8")
-						{
-							texture_type = SWFTexture::PixelFormat::LUMINANCE8_ALPHA8;
-						}
-						else if (texture_info["PixelFormat"] == "LUMINANCE8")
-						{
-							texture_type = SWFTexture::PixelFormat::LUMINANCE8;
-						}
+			// 			if (texture_info["PixelFormat"] == "RGBA4")
+			// 			{
+			// 				texture_type = SWFTexture::PixelFormat::RGBA4;
+			// 			}
+			// 			else if (texture_info["PixelFormat"] == "RGB5_A1")
+			// 			{
+			// 				texture_type = SWFTexture::PixelFormat::RGB5_A1;
+			// 			}
+			// 			else if (texture_info["PixelFormat"] == "RGB565")
+			// 			{
+			// 				texture_type = SWFTexture::PixelFormat::RGB565;
+			// 			}
+			// 			else if (texture_info["PixelFormat"] == "LUMINANCE8_ALPHA8")
+			// 			{
+			// 				texture_type = SWFTexture::PixelFormat::LUMINANCE8_ALPHA8;
+			// 			}
+			// 			else if (texture_info["PixelFormat"] == "LUMINANCE8")
+			// 			{
+			// 				texture_type = SWFTexture::PixelFormat::LUMINANCE8;
+			// 			}
 
-						if (texture_info["Filtering"] == "LINEAR_NEAREST")
-						{
-							texture.filtering = SWFTexture::Filter::LINEAR_NEAREST;
-						}
-						else if (texture_info["Filtering"] == "LINEAR_MIPMAP_NEAREST")
-						{
-							texture.filtering = SWFTexture::Filter::LINEAR_MIPMAP_NEAREST;
-						}
-						else if (texture_info["Filtering"] == "NEAREST_NEAREST")
-						{
-							texture.filtering = SWFTexture::Filter::NEAREST_NEAREST;
-						}
+			// 			if (texture_info["Filtering"] == "LINEAR_NEAREST")
+			// 			{
+			// 				texture.filtering = SWFTexture::Filter::LINEAR_NEAREST;
+			// 			}
+			// 			else if (texture_info["Filtering"] == "LINEAR_MIPMAP_NEAREST")
+			// 			{
+			// 				texture.filtering = SWFTexture::Filter::LINEAR_MIPMAP_NEAREST;
+			// 			}
+			// 			else if (texture_info["Filtering"] == "NEAREST_NEAREST")
+			// 			{
+			// 				texture.filtering = SWFTexture::Filter::NEAREST_NEAREST;
+			// 			}
 
-						if (texture_info["Encoding"] == "khronos")
-						{
-							texture.encoding(SWFTexture::TextureEncoding::KhronosTexture);
-						}
-						else if (texture_info["Encoding"] == "raw")
-						{
-							texture.encoding(SWFTexture::TextureEncoding::Raw);
-							texture.pixel_format(texture_type);
-						}
-					}
+			// 			if (texture_info["Encoding"] == "khronos")
+			// 			{
+			// 				texture.encoding(SWFTexture::TextureEncoding::KhronosTexture);
+			// 			}
+			// 			else if (texture_info["Encoding"] == "raw")
+			// 			{
+			// 				texture.encoding(SWFTexture::TextureEncoding::Raw);
+			// 				texture.pixel_format(texture_type);
+			// 			}
+			// 		}
 
-					// Texture Insert
-					if (textures.size() <= i)
-					{
-						textures.push_back(texture);
-					}
-					else
-					{
-						textures[i] = texture;
-					}
+			// 		// Texture Insert
+			// 		if (textures.size() <= i)
+			// 		{
+			// 			textures.push_back(texture);
+			// 		}
+			// 		else
+			// 		{
+			// 			textures[i] = texture;
+			// 		}
 
-					std::cout << "Processed texture: " << texture_images_paths[i] << std::endl;
-				}
-			}
+			// 		std::cout << "Processed texture: " << texture_images_paths[i] << std::endl;
+			// 	}
+			// }
 		};
 	}
 }
