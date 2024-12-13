@@ -39,17 +39,27 @@ int main(int argc, char* argv[])
 	cout << loading.elapsed() << endl << endl;
 	loading.reset();
 
-	/* Save test */
-	fs::path folder = filepath.parent_path();
-	try {
-		swf.save(folder / filepath.stem().concat("_new").concat(filepath.extension().string()), Signature::Zstandard);
+	// swf.GetDisplayObjectByID(10623)
+	for (sc::flash::ExportName& n : swf.exports) {
+		if (n.name == "event_icon_invasion") {
+			sc::flash::MovieClip* mc = (sc::flash::MovieClip*)&swf.GetDisplayObjectByID(n.id);
+			for (DisplayObjectInstance& doi : mc->childrens) {
+				cout << n.name.string() << " " << doi.id << endl;
+			}
+		}
+		// cout << n.name.string() << " " << n.id << endl;
 	}
-	catch (const wk::Exception& err) {
-		cout << "Error. " << endl << "Message: " << err.what() << endl;
-	}
+	// /* Save test */
+	// fs::path folder = filepath.parent_path();
+	// try {
+	// 	swf.save(folder / filepath.stem().concat("_new").concat(filepath.extension().string()), Signature::Zstandard);
+	// }
+	// catch (const wk::Exception& err) {
+	// 	cout << "Error. " << endl << "Message: " << err.what() << endl;
+	// }
 
-	cout << "Saving took: ";
-	cout << loading.elapsed() << endl;
+	// cout << "Saving took: ";
+	// cout << loading.elapsed() << endl;
 
 	return 0;
 }
