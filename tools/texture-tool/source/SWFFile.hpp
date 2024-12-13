@@ -215,10 +215,26 @@ namespace sc
 		public:
 			SWFFile() {};
 
-			// If the file is a real texture, only the texture tags are loaded, otherwise the entire file is loaded.
 			SWFFile(std::filesystem::path path, bool load_all = false)
 			{
 				current_file = path;
+
+				wk::InputFileStream file(path);
+				if (SupercellSWF::IsSC2(file))
+				{
+					std::cout << "File is loaded as a SC2" << std::endl;
+					load_sc2(file);
+				}
+				else
+				{
+					load_sc1(path, load_all);
+				}
+			}
+
+		public:
+			// If the file is a real texture, only the texture tags are loaded, otherwise the entire file is loaded.
+			void load_sc1(std::filesystem::path path, bool load_all = false)
+			{
 				stream.open_file(path);
 
 				// Path Check
@@ -292,7 +308,6 @@ namespace sc
 				}
 			}
 
-		public:
 			void load_texures_from_binary()
 			{
 				while (true)
@@ -458,7 +473,7 @@ namespace sc
 							texture.image()->depth()
 						);
 
-						wk::MemoryStream image_data(image.data(), image.data_length());
+						wk::SharedMemoryStream image_data(image.data(), image.data_length());
 						((sc::texture::KhronosTexture*)(texture.image()))->decompress_data(image_data);
 
 						PremultiplyToStraight(image);
@@ -530,12 +545,12 @@ namespace sc
 				for (uint16_t i = 0; texture_images_paths.size() > i; i++)
 				{
 					// Image Loading
-					wk::RawImage* image = nullptr;
+					wk::Ref<wk::RawImage> image;
 					wk::InputFileStream image_file(texture_images_paths[i]);
-					wk::stb::load_image(image_file, &image);
+					wk::stb::load_image(image_file, image);
 					StraightToPremultiply(*image);
 
-					wk::MemoryStream image_data(image->data(), image->data_length());
+					wk::SharedMemoryStream image_data(image->data(), image->data_length());
 
 					// Image Converting
 					SWFTexture texture;

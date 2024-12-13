@@ -52,16 +52,16 @@ namespace sc
 
 		public:
 			virtual void load(const std::filesystem::path& filePath);
-
-
 			bool load_internal(const std::filesystem::path& filepath, bool is_texture);
 
 			bool load_sc1(bool is_texture);
-
+			void load_sc2(wk::Stream& stream);
 			void load_sc2();
 
 			virtual void save(const fs::path& filepath, Signature signature);
 			void save_internal(bool is_texture, bool is_lowres);
+
+			virtual void save_sc2(const fs::path& filepath) const;
 
 			SWFStream stream;
 
@@ -96,22 +96,8 @@ namespace sc
 			SWFString multi_resolution_suffix = MULTIRES_DEFAULT_SUFFIX;
 			SWFString low_resolution_suffix = LOWRES_DEFAULT_SUFFIX;
 
-		private:
-			void load_sc2_matrix_banks(const SC2::DataStorage* storage);
-
-			void load_sc2_chunk(const SC2::DataStorage* storage, void (SupercellSWF::* reader)(const SC2::DataStorage* storage, const uint8_t*))
-			{
-				uint32_t data_size = stream.read_unsigned_int();
-				(this->*reader)(storage, (uint8_t*)stream.data() + stream.position());
-				stream.seek(data_size, wk::Stream::SeekMode::Add);
-			};
-
-			void load_sc2_export_names(const SC2::DataStorage* storage, const uint8_t*);
-			void load_sc2_textfields(const SC2::DataStorage* storage, const uint8_t*);
-			void load_sc2_shapes(const SC2::DataStorage* storage, const uint8_t*);
-			void load_sc2_movieclip(const SC2::DataStorage* storage, const uint8_t*);
-			void load_sc2_movieclip_modifiers(const SC2::DataStorage* storage, const uint8_t*);
-			void load_sc2_textures(const SC2::DataStorage* storage, const uint8_t*);
+		public:
+			static bool IsSC2(wk::Stream& stream);
 		};
 	}
 }
